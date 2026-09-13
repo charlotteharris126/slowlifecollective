@@ -1,0 +1,32 @@
+name: Create weekly content
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Check the queue without spending credits
+        type: boolean
+        default: true
+  schedule:
+    - cron: '20 * * * *'
+permissions:
+  contents: read
+concurrency:
+  group: higgsfield-worker
+  cancel-in-progress: false
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - name: Install official subscription CLI
+        run: npm install --global @higgsfield/cli@0.1.40
+      - name: Process studio queue within the monthly cap
+        env:
+          HF_SESSION: ${{ secrets.HIGGSFIELD_SESSION }}
+          STUDIO_WORKER_SECRET: ${{ secrets.STUDIO_WORKER_SECRET }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}
+        run: node scripts/worker.mjs
+      - name: Remove session
+        if: always()
+        run: rm -f "$HOME/.config/higgsfield/credentials.json"
