@@ -1,0 +1,26 @@
+name: Check hosted Higgsfield connection
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: higgsfield-worker
+  cancel-in-progress: false
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - name: Install official CLI
+        run: npm install --global @higgsfield/cli@0.1.40
+      - name: Restore private session
+        env:
+          HF_SESSION: ${{ secrets.HIGGSFIELD_SESSION }}
+        run: |
+          node -e 'const fs=require("fs"),os=require("os"),path=require("path");const d=path.join(os.homedir(),".config/higgsfield");const v=JSON.parse(process.env.HF_SESSION);if(!v.access_token)throw Error("Session missing");fs.mkdirSync(d,{recursive:true,mode:0o700});fs.writeFileSync(path.join(d,"credentials.json"),JSON.stringify(v),{mode:0o600});'
+      - name: Verify connection and quotes without spending
+        run: node scripts/check.mjs
+      - name: Remove session
+        if: always()
+        run: rm -f "$HOME/.config/higgsfield/credentials.json"
