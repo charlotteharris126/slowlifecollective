@@ -8,7 +8,7 @@ try{
  if(!session?.access_token||!session?.refresh_token)throw Error('Higgsfield reconnection required.');
  fs.mkdirSync(path.dirname(file),{recursive:true,mode:0o700});fs.writeFileSync(file,JSON.stringify(session),{mode:0o600});
  let failed=false;
- try{execFileSync('node',['scripts/check.mjs'],{stdio:['ignore','pipe','pipe'],timeout:180000});}catch{failed=true;}
+ try{const output=execFileSync('node',['scripts/check.mjs'],{encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:180000});for(const line of output.split('\n'))if(line.startsWith('SCHEMA '))console.log(line);}catch{failed=true;}
  // The CLI may rotate tokens. Persist the resulting session before this runner disappears.
  if(!fs.existsSync(file))throw Error('Higgsfield login expired; reconnect before another run.');
  const renewed=JSON.parse(fs.readFileSync(file,'utf8'));

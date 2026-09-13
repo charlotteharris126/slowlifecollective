@@ -9,3 +9,8 @@ for(const quote of [image,reel])if(!Number.isFinite(Number(quote.credits_exact))
 console.log('Hosted login and both cost estimates succeeded. No generation submitted.');
 console.log(`Image: ${image.credits_exact} credits. Reel: ${reel.credits_exact} credits.`);
 console.log(`Four posts/week, including 2 Reel source images and 25% retry allowance: ${Math.ceil((14*Number(image.credits_exact)+2*Number(reel.credits_exact))*52/12*1.25)} credits/month.`);
+
+// Print structure only: never provider URLs, prompts, account or credential values.
+function shape(v,depth=0){if(depth>7)return typeof v;if(v===null)return null;if(Array.isArray(v))return v.length?[shape(v[0],depth+1)]:[];if(typeof v==='object')return Object.fromEntries(Object.entries(v).map(([k,x])=>[k,shape(x,depth+1)]));return typeof v;}
+const recent=cli(['generate','list','--size','1']);
+console.log('SCHEMA '+JSON.stringify(shape(recent)));
