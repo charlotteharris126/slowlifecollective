@@ -14,3 +14,5 @@ console.log(`Four posts/week, including 2 Reel source images and 25% retry allow
 function shape(v,depth=0){if(depth>7)return typeof v;if(v===null)return null;if(Array.isArray(v))return v.length?[shape(v[0],depth+1)]:[];if(typeof v==='object')return Object.fromEntries(Object.entries(v).map(([k,x])=>[k,shape(x,depth+1)]));return typeof v;}
 const recent=cli(['generate','list','--size','1']);
 console.log('SCHEMA '+JSON.stringify(shape(recent)));
+
+if(Array.isArray(recent)&&recent[0]?.id){const job=cli(['generate','get',recent[0].id]);console.log('SCHEMA_DETAIL '+JSON.stringify(shape(job)));console.log('JOB_STATUS '+JSON.stringify({status:job.status,resultHost:job.result_url?new URL(job.result_url).hostname:null}));}
