@@ -3,6 +3,9 @@ const base='https://admin.slowlifecollective.com/.netlify/functions/';
 const file=path.join(os.homedir(),'.config/higgsfield/credentials.json');
 async function request(endpoint,body){const r=await fetch(base+endpoint,{method:'POST',redirect:'error',headers:{authorization:'Bearer '+process.env.STUDIO_WORKER_SECRET,'content-type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(55000)});if(!r.ok)throw Error('Studio request failed ('+r.status+').');return r.json();}
 function cli(args){try{return JSON.parse(execFileSync('higgsfield',[...args,'--json'],{encoding:'utf8',timeout:65000,stdio:['ignore','pipe','pipe'],maxBuffer:2*1024*1024}));}catch{throw Error('Higgsfield command could not be confirmed.');}}
+function recent(kind){const value=cli(['generate','list',kind==='video'?'--video':'--image','--size','20']);return Array.isArray(value)?value:value?.jobs||value?.data||value?.results||[];}
+function createdAt(job){const raw=job?.created_at??job?.createdAt;if(typeof raw==='number')return raw<1e12?raw*1000:raw;const parsed=Date.parse(raw);return Number.isFinite(parsed)?parsed:NaN;}
+function recover(job){const start=Date.parse(job.dispatchedAt),matches=recent(job.kind).filter(x=>{const id=x?.id||x?.job_id,t=createdAt(x);return typeof id==='string'&&/^[a-zA-Z0-9-]{8,100}$/.test(id)&&Number.isFinite(t)&&t>=start-10000&&t<=start+180000;});if(matches.length!==1)throw Error('Uncertain submission could not be matched uniquely.');return matches[0].id||matches[0].job_id;}
 function argsFor(task){const a=[task.model,'--prompt',task.prompt];for(const [key,value] of Object.entries(task.params))a.push('--'+key,String(value));if(task.reference)a.push(task.model==='seedance_2_0'?'--start-image':'--image',task.reference);return a;}
 // A malformed or multi-job submission stops. Never infer an ID from free text.
 export function submissionId(value){const v=Array.isArray(value)&&value.length===1?value[0]:value;const id=v?.id||v?.job_id;if(typeof id!=='string'||!/^[a-zA-Z0-9-]{8,100}$/.test(id))throw Error('Unrecognised submission response; review required.');return id;}
@@ -17,6 +20,11 @@ try{
   if(!work.job){console.log(work.paused?'Worker paused or before its first generation window. No credits spent.':'No eligible generation work.');break;}
   const job=work.job;
   if(process.env.DRY_RUN==='true'){console.log('Dry run: an eligible job exists. No generation submitted.');break;}
+  if(job.status==='uncertain'){
+   const providerId=recover(job);
+   await request('generation',{action:'adopt',lease,id:job.id,dispatchId:job.dispatchId,providerId});
+   console.log('Recovered one uniquely matching generation; no duplicate was submitted.');continue;
+  }
   if(job.status==='submitted'){
    const result=cli(['generate','get',job.providerId]);
    if(result.id!==job.providerId)throw Error('Unexpected provider job.');

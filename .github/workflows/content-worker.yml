@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
       - name: Install official subscription CLI
-        run: npm install --global @higgsfield/cli@0.1.40
+        run: npm install --global @higgsfield/cli@0.2.1
       - name: Process studio queue within the monthly cap
         env:
           HF_SESSION: ${{ secrets.HIGGSFIELD_SESSION }}
