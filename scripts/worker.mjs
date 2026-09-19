@@ -37,9 +37,9 @@ try{
    // Leave the acknowledged job for the next hosted run; do not submit twice.
    console.log('Generation is still processing. The next hosted run will collect it.');break;
   }
-  const args=argsFor(job),quote=cli(['generate','cost',...args]);
-  if(typeof quote.credits_exact!=='number'||!Number.isFinite(quote.credits_exact)||quote.credits_exact<=0)throw Error('Exact credit quote unavailable.');
-  const reserved=await request('generation',{action:'reserve',lease,id:job.id,credits:quote.credits_exact});
+  const args=argsFor(job),quote=cli(['generate','cost',...args]),credits=quote.credits_exact??quote.credits;
+  if(typeof credits!=='number'||!Number.isFinite(credits)||credits<=0)throw Error('Exact credit quote unavailable.');
+  const reserved=await request('generation',{action:'reserve',lease,id:job.id,credits});
   if(reserved.blocked){console.log('Monthly cap reached; generation paused for review.');break;}
   // No retry surrounds create. A timeout/crash retains the reservation and blocks this job.
   try{
