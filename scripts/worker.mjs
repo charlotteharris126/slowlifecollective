@@ -5,7 +5,7 @@ async function request(endpoint,body){const r=await fetch(base+endpoint,{method:
 function cli(args){try{return JSON.parse(execFileSync('higgsfield',[...args,'--json'],{encoding:'utf8',timeout:65000,stdio:['ignore','pipe','pipe'],maxBuffer:2*1024*1024}));}catch{throw Error('Higgsfield command could not be confirmed.');}}
 function recent(kind){const value=cli(['generate','list',kind==='video'?'--video':'--image','--size','20']);return Array.isArray(value)?value:value?.jobs||value?.data||value?.results||[];}
 function createdAt(job){const raw=job?.created_at??job?.createdAt;if(typeof raw==='number')return raw<1e12?raw*1000:raw;const parsed=Date.parse(raw);return Number.isFinite(parsed)?parsed:NaN;}
-function recover(job){const start=Date.parse(job.dispatchedAt),matches=recent(job.kind).filter(x=>{const id=x?.id||x?.job_id,t=createdAt(x);return typeof id==='string'&&/^[a-zA-Z0-9-]{8,100}$/.test(id)&&Number.isFinite(t)&&t>=start-10000&&t<=start+180000;});if(matches.length!==1)throw Error('Uncertain submission could not be matched uniquely.');return matches[0].id||matches[0].job_id;}
+function recover(job){const start=Date.parse(job.dispatchedAt),matches=recent(job.kind).filter(x=>{const id=x?.id||x?.job_id,t=createdAt(x);return typeof id==='string'&&/^[a-zA-Z0-9-]{8,100}$/.test(id)&&Number.isFinite(t)&&t>=start-10000&&t<=start+180000;});if(matches.length>1)throw Error('Uncertain submission could not be matched uniquely.');return matches.length===1?(matches[0].id||matches[0].job_id):null;}
 function argsFor(task){const a=[task.model,'--prompt',task.prompt];for(const [key,value] of Object.entries(task.params))a.push('--'+key,String(value));if(task.reference)a.push(task.model==='seedance_2_0'?'--start-image':'--image',task.reference);return a;}
 // A malformed or multi-job submission stops. Never infer an ID from free text.
 export function submissionId(value){const v=Array.isArray(value)&&value.length===1?value[0]:value;const id=v?.id||v?.job_id;if(typeof id!=='string'||!/^[a-zA-Z0-9-]{8,100}$/.test(id))throw Error('Unrecognised submission response; review required.');return id;}
@@ -22,8 +22,9 @@ try{
   if(process.env.DRY_RUN==='true'){console.log('Dry run: an eligible job exists. No generation submitted.');break;}
   if(job.status==='uncertain'){
    const providerId=recover(job);
-   await request('generation',{action:'adopt',lease,id:job.id,dispatchId:job.dispatchId,providerId});
-   console.log('Recovered one uniquely matching generation; no duplicate was submitted.');continue;
+   if(providerId){await request('generation',{action:'adopt',lease,id:job.id,dispatchId:job.dispatchId,providerId});console.log('Recovered one uniquely matching generation; no duplicate was submitted.');}
+   else {await request('generation',{action:'release',lease,id:job.id,dispatchId:job.dispatchId});console.log('No provider job existed; released the stale reservation for one safe attempt.');}
+   continue;
   }
   if(job.status==='submitted'){
    const result=cli(['generate','get',job.providerId]);
