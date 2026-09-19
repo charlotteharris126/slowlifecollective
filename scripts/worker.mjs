@@ -1,6 +1,6 @@
 import fs from 'node:fs';import os from 'node:os';import path from 'node:path';import {execFileSync} from 'node:child_process';
 const base='https://admin.slowlifecollective.com/.netlify/functions/';
-const file=path.join(os.homedir(),'.config/higgsfield/credentials.json');
+const dir=path.join(os.homedir(),'.config/higgsfield'),file=path.join(dir,'credentials.json'),configFile=path.join(dir,'config.json');
 async function request(endpoint,body){const r=await fetch(base+endpoint,{method:'POST',redirect:'error',headers:{authorization:'Bearer '+process.env.STUDIO_WORKER_SECRET,'content-type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(55000)});if(!r.ok)throw Error('Studio request failed ('+r.status+').');return r.json();}
 function cli(args){try{return JSON.parse(execFileSync('higgsfield',[...args,'--json'],{encoding:'utf8',timeout:65000,stdio:['ignore','pipe','pipe'],maxBuffer:2*1024*1024}));}catch{throw Error('Higgsfield command could not be confirmed.');}}
 function recent(kind){const value=cli(['generate','list',kind==='video'?'--video':'--image','--size','20']);return Array.isArray(value)?value:value?.jobs||value?.data||value?.results||[];}
@@ -13,7 +13,7 @@ let lease;
 try{
  const acquired=await request('worker-session',{action:'acquire'});lease=acquired.lease;
  const session=acquired.session||JSON.parse(process.env.HF_SESSION||'null');if(!session?.access_token||!session?.refresh_token)throw Error('Higgsfield reconnection required.');
- fs.mkdirSync(path.dirname(file),{recursive:true,mode:0o700});fs.writeFileSync(file,JSON.stringify(session),{mode:0o600});
+ const {workspace_id,...credentials}=session;fs.mkdirSync(dir,{recursive:true,mode:0o700});fs.writeFileSync(file,JSON.stringify(credentials),{mode:0o600});if(workspace_id)fs.writeFileSync(configFile,JSON.stringify({workspace_id}),{mode:0o600});
  const deadline=Date.now()+240000;let steps=0;
  while(Date.now()<deadline&&steps++<20){
   const work=await request('generation',{action:'work',lease});
@@ -51,8 +51,8 @@ try{
 }catch(e){console.error('Hosted content worker needs attention. No unapproved publication was requested.');process.exitCode=1;
 }finally{
  if(lease&&fs.existsSync(file)){
-  try{const renewed=JSON.parse(fs.readFileSync(file,'utf8'));await request('worker-session',{action:'save',lease,session:renewed});}catch{console.error('Higgsfield session could not be saved. Reconnection may be required.');process.exitCode=1;}
+  try{const renewed=JSON.parse(fs.readFileSync(file,'utf8')),config=fs.existsSync(configFile)?JSON.parse(fs.readFileSync(configFile,'utf8')):{};await request('worker-session',{action:'save',lease,session:{...renewed,workspace_id:config.workspace_id}});}catch{console.error('Higgsfield session could not be saved. Reconnection may be required.');process.exitCode=1;}
  }
  try{await request('generation',{action:'report',ok:!process.exitCode});}catch{process.exitCode=1;}
- fs.rmSync(file,{force:true});
+ fs.rmSync(file,{force:true});fs.rmSync(configFile,{force:true});
 }
