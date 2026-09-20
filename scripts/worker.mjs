@@ -8,7 +8,7 @@ function createdAt(job){const raw=job?.created_at??job?.createdAt;if(typeof raw=
 function recover(job){const start=Date.parse(job.dispatchedAt),matches=recent(job.kind).filter(x=>{const id=x?.id||x?.job_id,t=createdAt(x);return typeof id==='string'&&/^[a-zA-Z0-9-]{8,100}$/.test(id)&&Number.isFinite(t)&&t>=start-10000&&t<=start+180000;});if(matches.length>1)throw Error('Uncertain submission could not be matched uniquely.');return matches.length===1?(matches[0].id||matches[0].job_id):null;}
 function argsFor(task){const a=[task.model,'--prompt',task.prompt];for(const [key,value] of Object.entries(task.params))a.push('--'+key,String(value));if(task.reference)a.push(task.model==='seedance_2_0'?'--start-image':'--image',task.reference);return a;}
 // A malformed or multi-job submission stops. Never infer an ID from free text.
-export function submissionId(value){const roots=[value,value?.job,value?.data,...(Array.isArray(value)?value:[]),...(Array.isArray(value?.jobs)?value.jobs:[]),...(Array.isArray(value?.data)?value.data:[])],direct=[...(Array.isArray(value?.job_ids)?value.job_ids:[]),...(Array.isArray(value?.jobIds)?value.jobIds:[])],ids=[...new Set([...roots.map(v=>v?.id||v?.job_id),...direct].filter(id=>typeof id==='string'&&/^[a-zA-Z0-9-]{8,100}$/.test(id)))];if(ids.length!==1)throw Error('Unrecognised submission response; review required.');return ids[0];}
+export function submissionId(value){const roots=[value,value?.job,value?.data,...(Array.isArray(value)?value:[]),...(Array.isArray(value?.jobs)?value.jobs:[]),...(Array.isArray(value?.data)?value.data:[])],direct=[...(Array.isArray(value?.job_ids)?value.job_ids:[]),...(Array.isArray(value?.jobIds)?value.jobIds:[])],ids=[...new Set([...roots.map(v=>typeof v==='string'?v:v?.id||v?.job_id),...direct].filter(id=>typeof id==='string'&&/^[a-zA-Z0-9-]{8,100}$/.test(id)))];if(ids.length!==1)throw Error('Unrecognised submission response; review required.');return ids[0];}
 let lease;
 try{
  const acquired=await request('worker-session',{action:'acquire'});lease=acquired.lease;
@@ -43,7 +43,7 @@ try{
   if(reserved.blocked){console.log('Monthly cap reached; generation paused for review.');break;}
   // No retry surrounds create. A timeout/crash retains the reservation and blocks this job.
   try{
-   const created=cli(['generate','create',...argsFor(reserved)]),providerId=submissionId(created);
+   const created=cli(['generate','create',...argsFor(reserved)]);let providerId;try{providerId=submissionId(created)}catch{providerId=recover({...reserved,kind:job.kind})}if(!providerId)throw Error('Created job could not be matched safely.');
    await request('generation',{action:'submitted',lease,id:job.id,dispatchId:reserved.dispatchId,providerId});
    console.log('One generation submitted within reserved credits.');
   }catch{await request('generation',{action:'failed',lease,id:job.id});throw Error('Submission needs review; no retry was made.');}
