@@ -1,7 +1,7 @@
 import fs from 'node:fs';import os from 'node:os';import path from 'node:path';import {execFileSync} from 'node:child_process';
 const base='https://admin.slowlifecollective.com/.netlify/functions/';
 const dir=path.join(os.homedir(),'.config/higgsfield'),file=path.join(dir,'credentials.json'),configFile=path.join(dir,'config.json');
-async function request(endpoint,body){const r=await fetch(base+endpoint,{method:'POST',redirect:'error',headers:{authorization:'Bearer '+process.env.STUDIO_WORKER_SECRET,'content-type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(55000)});if(!r.ok)throw Error('Studio request failed ('+r.status+').');return r.json();}
+async function request(endpoint,body){const r=await fetch(base+endpoint,{method:'POST',redirect:'error',headers:{authorization:'Bearer '+process.env.STUDIO_WORKER_SECRET,'content-type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(55000)});if(!r.ok){let detail='';try{detail=(await r.json()).error||''}catch{}throw Error('Studio '+endpoint+' request failed ('+r.status+')'+(detail?': '+detail:'.'));}return r.json();}
 function cli(args){try{return JSON.parse(execFileSync('higgsfield',[...args,'--json'],{encoding:'utf8',timeout:65000,stdio:['ignore','pipe','pipe'],maxBuffer:2*1024*1024}));}catch{throw Error('Higgsfield command could not be confirmed.');}}
 function recent(kind){const value=cli(['generate','list',kind==='video'?'--video':'--image','--size','20']);return Array.isArray(value)?value:value?.jobs||value?.data||value?.results||[];}
 function createdAt(job){const raw=job?.created_at??job?.createdAt;if(typeof raw==='number')return raw<1e12?raw*1000:raw;const parsed=Date.parse(raw);return Number.isFinite(parsed)?parsed:NaN;}
@@ -26,7 +26,7 @@ try{
    else {await request('generation',{action:'release',lease,id:job.id,dispatchId:job.dispatchId});console.log('No provider job existed; released the stale reservation for one safe attempt.');}
    continue;
   }
-  if(job.status==='submitted'){
+  if(['submitted','attention'].includes(job.status)){
    const result=cli(['generate','get',job.providerId]);
    if(result.id!==job.providerId)throw Error('Unexpected provider job.');
    if(result.status==='completed'){
@@ -48,7 +48,7 @@ try{
    console.log('One generation submitted within reserved credits.');
   }catch{await request('generation',{action:'failed',lease,id:job.id});throw Error('Submission needs review; no retry was made.');}
  }
-}catch(e){console.error('Hosted content worker needs attention. No unapproved publication was requested.');process.exitCode=1;
+}catch(e){console.error('Hosted content worker needs attention. No unapproved publication was requested.');console.error(e instanceof Error?e.message:'Unknown worker error.');process.exitCode=1;
 }finally{
  if(lease&&fs.existsSync(file)){
   try{const renewed=JSON.parse(fs.readFileSync(file,'utf8')),config=fs.existsSync(configFile)?JSON.parse(fs.readFileSync(configFile,'utf8')):{};await request('worker-session',{action:'save',lease,session:{...renewed,workspace_id:config.workspace_id}});}catch{console.error('Higgsfield session could not be saved. Reconnection may be required.');process.exitCode=1;}
